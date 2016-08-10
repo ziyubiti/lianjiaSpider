@@ -9,6 +9,9 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import quote
 from bs4 import BeautifulSoup
 import random
+import re
+import mysql.connector
+from datetime import datetime
 
 hds=[{'User-Agent':'Mozilla/5.0 (Windows; U; Windows NT 6.1; en-US; rv:1.9.1.6) Gecko/20091201 Firefox/3.5.6'},\
     {'User-Agent':'Mozilla/5.0 (Windows NT 6.2) AppleWebKit/535.11 (KHTML, like Gecko) Chrome/17.0.963.12 Safari/535.11'},\
@@ -27,7 +30,43 @@ hds=[{'User-Agent':'Mozilla/5.0 (Windows; U; Windows NT 6.1; en-US; rv:1.9.1.6) 
 #cellname = u'荣丰2008'    # unit test
 #url=u"http://bj.lianjia.com/ershoufang/c1111027377642/?sug=" + quote(xqname)  #考拉test
 
-def house_percell_spider(cellname = u'荣丰2008'):
+#=========================setup a database, only execute in 1st running=================================
+def database_init():
+        
+     conn = mysql.connector.connect(user='root', password='811210', database='lianjiaSpider')
+     dbc = conn.cursor()
+     # 创建houseinfo and hisprice表:
+     dbc.execute('create table if not exists houseinfo (houseID varchar(50) primary key, Title varchar(200), link varchar(200), cellname varchar(100),\
+     years varchar(200),housetype varchar(50),square varchar(50), direction varchar(50),floor varchar(50),taxtype varchar(200), \
+     totalPrice varchar(200), unitPrice varchar(200),followInfo varchar(200),validdate varchar(50),validflag varchar(20))')
+     
+     dbc.execute('create table if not exists hisprice (houseID varchar(50) primary key, date varchar(50), totalPrice varchar(200))')
+     conn.commit()
+     dbc.close()
+     return conn
+ # 插入一行记录，注意MySQL的占位符是%s:
+#==============================================================================
+
+def houseinfo_insert_mysql(conn,info_dict):
+
+    info_list=[u'houseID',u'Title',u'link',u'cellname',u'years',u'housetype',u'square',u'direction',u'floor',\
+    u'taxtype',u'totalPrice',u'unitPrice',u'followInfo',u'validdate',u'validflag']
+    t=[]
+    for il in info_list:
+        if il in info_dict:
+            t.append(info_dict[il])
+        else:
+            t.append('')
+    t=tuple(t)
+   
+    cursor = conn.cursor()
+    cursor.execute('insert into houseinfo  values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)', t)
+#    print('rowcount =', dbc.rowcount)
+    conn.commit()
+    cursor.close()
+
+
+def house_percell_spider(conn,cellname = u'荣丰2008'):
     
     url=u"http://bj.lianjia.com/ershoufang/rs" + quote(cellname) +"/"
     
@@ -99,8 +138,30 @@ def house_percell_spider(cellname = u'荣丰2008'):
             unitPrice = name.find("div",{"class":"unitPrice"})
             info_dict.update({u'unitPrice':unitPrice.get('data-price')})
             info_dict.update({u'houseID':unitPrice.get('data-hid')})    
+            
+            now = datetime.now()
+            m = now.month
+            d = now.day
+            if m<10:
+                ms = '0'+str(m)
+            else:
+                ms = str(m)    
+            if d<10:
+                ds = '0'+str(d)    
+            else:
+                ds = str(d)      
+            
+            today = str(now.year)+ ms + ds
+
+            info_dict.update({u'validdate':today})    
+            info_dict.update({u'validflag':str('1')})  
+
 
             # adding houseid urlopen,and save the images for each house,TBC
+            
+            
+            # houseinfo insert into mysql
+            houseinfo_insert_mysql(conn,info_dict)
             
             info_dict_all[i+page*30] = info_dict
 
@@ -110,8 +171,11 @@ def house_percell_spider(cellname = u'荣丰2008'):
 
 if __name__=="__main__":
     cellname = u'荣丰2008'
-    house = house_percell_spider(cellname)
-    print(house)
+    conn = database_init()
+    house = house_percell_spider(conn,cellname)
+    conn.close()
+#    print(house)
+    
 
 
 
