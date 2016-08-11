@@ -2,6 +2,7 @@
 """
 @author: ziyubiti
 @site: http://ziyubiti.github.io
+@date: 20160808
 """
 
 from urllib.request import urlopen,Request
@@ -35,6 +36,7 @@ def database_init():
         
      conn = mysql.connector.connect(user='root', password='811210', database='lianjiaSpider')
      dbc = conn.cursor()
+        
      # 创建houseinfo and hisprice表:
      dbc.execute('create table if not exists houseinfo (houseID varchar(50) primary key, Title varchar(200), link varchar(200), cellname varchar(100),\
      years varchar(200),housetype varchar(50),square varchar(50), direction varchar(50),floor varchar(50),taxtype varchar(200), \
@@ -49,7 +51,7 @@ def database_init():
 
 def houseinfo_insert_mysql(conn,info_dict):
 
-    info_list=[u'houseID',u'Title',u'link',u'cellname',u'years',u'housetype',u'square',u'direction',u'floor',\
+    info_list = [u'houseID',u'Title',u'link',u'cellname',u'years',u'housetype',u'square',u'direction',u'floor',\
     u'taxtype',u'totalPrice',u'unitPrice',u'followInfo',u'validdate',u'validflag']
     t=[]
     for il in info_list:
@@ -57,16 +59,71 @@ def houseinfo_insert_mysql(conn,info_dict):
             t.append(info_dict[il])
         else:
             t.append('')
-    t=tuple(t)
+    t=tuple(t)    # for houseinfo
    
+    today = get_today()    
+    t2=(info_dict[u'houseID'],today,info_dict[u'totalPrice'])  # for hisprice
+       
     cursor = conn.cursor()
-    cursor.execute('insert into houseinfo  values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)', t)
-#    print('rowcount =', dbc.rowcount)
+    
+    cursor.execute('select * from houseinfo where houseID = (%s)',(info_dict[u'houseID'],))
+    values = cursor.fetchall()         #turple type    
+    if len(values)>0:
+        nvs = zip(info_list,list(values[0]))
+        Qres = dict( (info_list,value) for info_list,value in nvs)
+    else:
+        pass
+    
+    if len(values)==0:        # new house
+        cursor.execute('insert into houseinfo  values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)', t)
+        cursor.execute('insert into hisprice  values (%s,%s,%s)', t2)
+        trigger_notify_email(info_dict,'newhouse')        
+    else:
+        if int(today)>int(Qres[u'validdate']):
+            cursor.execute('update houseinfo set validdate = %s,validflag= %s where houseid = %s',(today,'1',info_dict[u'houseID']))
+            cursor.execute('insert into hisprice  values (%s,%s,%s)', t2)
+        else:
+            cursor.execute('update houseinfo set validflag= %s where houseid = %s',('1',info_dict[u'houseID']))
+            cursor.execute('update hisprice set totalPrice= %s where houseid = %s',(info_dict[u'totalPrice'],info_dict[u'houseID']))
+        if int(Qres[u'totalPrice']) != int(info_dict[u'totalPrice']):
+            trigger_notify_email('updateprice')
+            
     conn.commit()
     cursor.close()
 
+    
+def trigger_notify_email(info_dict,reason='newhouse'):
+    pass    
+    
+    
+    
+    
+def all_set_unvalid(conn):
+    cursor = conn.cursor()    
+    cursor.execute('update houseinfo set validflag= %s',('0',))
+    conn.commit()
+    cursor.close()
 
-def house_percell_spider(conn,cellname = u'荣丰2008'):
+    
+def get_today():
+    now = datetime.now()
+    m = now.month
+    d = now.day
+    if m<10:
+        ms = '0'+str(m)
+    else:
+        ms = str(m)    
+    if d<10:
+        ds = '0'+str(d)    
+    else:
+        ds = str(d)          
+    today = str(now.year)+ ms + ds    
+    return today
+
+
+    
+def house_percell_spider(conn,cellname = u'荣丰2008'):        
+    
     
     url=u"http://bj.lianjia.com/ershoufang/rs" + quote(cellname) +"/"
     
@@ -139,25 +196,11 @@ def house_percell_spider(conn,cellname = u'荣丰2008'):
             info_dict.update({u'unitPrice':unitPrice.get('data-price')})
             info_dict.update({u'houseID':unitPrice.get('data-hid')})    
             
-            now = datetime.now()
-            m = now.month
-            d = now.day
-            if m<10:
-                ms = '0'+str(m)
-            else:
-                ms = str(m)    
-            if d<10:
-                ds = '0'+str(d)    
-            else:
-                ds = str(d)      
-            
-            today = str(now.year)+ ms + ds
-
+            today = get_today()
             info_dict.update({u'validdate':today})    
             info_dict.update({u'validflag':str('1')})  
 
-
-            # adding houseid urlopen,and save the images for each house,TBC
+            # adding open houseid url,and save the images for each house,TBC     
             
             
             # houseinfo insert into mysql
@@ -168,13 +211,25 @@ def house_percell_spider(conn,cellname = u'荣丰2008'):
     return info_dict_all
     
     
+def house_celllist_spider(conn,celllist = [u'荣丰2008',u'保利茉莉公馆']):        
+    all_set_unvalid(conn)
+    for cellname in celllist:
+        house = house_percell_spider(conn,cellname)
+    return house         # unit test
+             
+        
+  
+
+    
 
 if __name__=="__main__":
-    cellname = u'荣丰2008'
+    celllist = [u'西豪逸景',u'丽水莲花',u'天宁寺东里',u'天宁寺西里',u'天宁寺前街北里',u'天宁寺前街南里',u'永居东里',u'永居胡同',\
+    u'手帕口北街',u'广华轩',u'三义里',u'三义东里',u'三义西里',u'常青藤嘉园',u'格调',u'依莲轩',u'西环景苑',u'丽阳四季',\
+    u'馨莲茗苑',u'马连道西里',u'小马厂东里',u'小马厂南里',u'小马厂西里',u'莲花池东路24号院',u'北欧印象',u'考拉社区',u'保利茉莉公馆',u'保利春天派']  #,u'保利茉莉公馆',u'保利春天派'
     conn = database_init()
-    house = house_percell_spider(conn,cellname)
+    house = house_celllist_spider(conn,celllist)
     conn.close()
-#    print(house)
+
     
 
 
