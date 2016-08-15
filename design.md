@@ -1,5 +1,5 @@
 
-1、	页面的爬取，house info的获取，主要涉及beautifulsoup库的使用；仅爬取指定的若干小区。  
+1、	页面的爬取，house info的获取，主要涉及beautifulsoup库的使用； 加入了小区的爬取，可爬取指定若干区域，如西城、海淀。先爬取小区，再爬取小区的房屋。  
 2、	信息存取：使用MySql数据库，数据库名称lianjiaHouse，包含两张表，两张表通过houseid进行关联：  
 　　a)	houseinfo，保存房屋基本信息，字段包括  
 　　　　　i.	Title  

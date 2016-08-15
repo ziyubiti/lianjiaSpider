@@ -32,13 +32,13 @@ hds=[{'User-Agent':'Mozilla/5.0 (Windows; U; Windows NT 6.1; en-US; rv:1.9.1.6) 
     {'User-Agent':'Opera/9.80 (Macintosh; Intel Mac OS X 10.6.8; U; en) Presto/2.8.131 Version/11.11'},\
     {'User-Agent':'Opera/9.80 (Windows NT 6.1; U; en) Presto/2.8.131 Version/11.11'}]
 
-#cellname = u'荣丰2008'    # unit test
-#url=u"http://bj.lianjia.com/ershoufang/c1111027377642/?sug=" + quote(xqname)  #考拉test
 
 #=========================setup a database, only execute in 1st running=================================
-def database_init():
-
-     conn = mysql.connector.connect(user='root', password='password', database='lianjiaSpider',host='localhost')
+def database_init(dbflag='local'):
+     if dbflag=='local':
+         conn = mysql.connector.connect(user='root', password='password', database='lianjiaSpider',host='localhost')
+     else:
+         conn = mysql.connector.connect(user='qdm1944', password='password', database='qdm1944_db',host='qdm1944.my3w.com')
      dbc = conn.cursor()
 
      # 创建houseinfo and hisprice表:
@@ -47,11 +47,43 @@ def database_init():
                 totalPrice varchar(200), unitPrice varchar(200),followInfo varchar(200),validdate varchar(50),validflag varchar(20))')
 
      dbc.execute('create table if not exists hisprice (id int(10) NOT NULL AUTO_INCREMENT primary key,houseID varchar(50) , date varchar(50), totalPrice varchar(200))')
+     dbc.execute('create table if not exists cellinfo (id int(10) NOT NULL AUTO_INCREMENT primary key,Title varchar(50) , link varchar(200))')
+
      conn.commit()
      dbc.close()
      return conn
- # 插入一行记录，注意MySQL的占位符是%s:
 #==============================================================================
+
+def celllist_read_from_database(conn):
+    cursor = conn.cursor()
+    cursor.execute('select * from cellinfo ')
+    values = cursor.fetchall()         #turple type
+
+    celllist = []
+    for j in range(len(values)):
+        celllist.append(values[j][1])
+
+    return celllist
+
+
+
+def cellinfo_insert_mysql(conn,info_dict):
+
+    t=(info_dict[u'Title'],info_dict[u'link'])  # for cellinfo
+
+    cursor = conn.cursor()
+
+    cursor.execute('select * from cellinfo where Title = (%s)',(info_dict[u'Title'],))
+    values = cursor.fetchall()         #turple type
+
+    if len(values)==0:        # new cell
+        cursor.execute('insert into cellinfo (Title,link) values (%s,%s)', t)
+    else:
+        cursor.execute('update cellinfo set link = %s where Title = %s',(info_dict[u'link'],info_dict[u'Title']))
+
+    conn.commit()
+    cursor.close()
+
 
 def houseinfo_insert_mysql(conn,info_dict):
 
@@ -84,11 +116,14 @@ def houseinfo_insert_mysql(conn,info_dict):
         cursor.execute('insert into hisprice (houseID,date,totalPrice) values (%s,%s,%s)', t2)
 #        trigger_notify_email(info_dict,'newhouse')
     else:
+        cursor.execute('update houseinfo set totalPrice = %s,unitPrice = %s,followInfo = %s,validdate = %s,\
+                       validflag= %s where houseid = %s',(info_dict[u'totalPrice'],info_dict[u'unitPrice'],\
+                                                          info_dict[u'followInfo'],today,'1',info_dict[u'houseID']))
+
         if int(today)>int(Qres[u'validdate']):
-            cursor.execute('update houseinfo set validdate = %s,validflag= %s where houseid = %s',(today,'1',info_dict[u'houseID']))
             cursor.execute('insert into hisprice (houseID,date,totalPrice) values (%s,%s,%s)', t2)
         else:
-            cursor.execute('update houseinfo set validflag= %s where houseid = %s',('1',info_dict[u'houseID']))
+#            cursor.execute('update houseinfo set validflag= %s where houseid = %s',('1',info_dict[u'houseID']))
             cursor.execute('update hisprice set totalPrice= %s where houseid = %s',(info_dict[u'totalPrice'],info_dict[u'houseID']))
         if int(Qres[u'totalPrice']) != int(info_dict[u'totalPrice']):
             info_dict[u'oldprice'] = Qres[u'totalPrice']
@@ -179,7 +214,7 @@ def house_percell_spider(conn,cellname = u'荣丰2008'):
 
     #try:
     req = Request(url,headers=hds[random.randint(0,len(hds)-1)])
-    source_code = urlopen(req,timeout=5).read()
+    source_code = urlopen(req,timeout=50).read()
     soup = BeautifulSoup(source_code,'lxml')
     #except (HTTPError, URLError), e:
     #    print e
@@ -194,8 +229,16 @@ def house_percell_spider(conn,cellname = u'荣丰2008'):
 #     total_pages = page_info['totalPage']
 #==============================================================================
 #======================method 2:string split  ========================================================
-    page_info= soup.find('div',{'class':'page-box house-lst-page-box'}).get('page-data').split(',')[0]  #'{"totalPage":5,"curPage":1}'
-    total_pages= int(page_info[-1])
+    try:
+        page_info= soup.find('div',{'class':'page-box house-lst-page-box'})
+    except AttributeError as e:
+        page_info = None
+
+    if page_info == None:
+        return None
+
+    page_info_str = page_info.get('page-data').split(',')[0]  #'{"totalPage":5,"curPage":1}'
+    total_pages= int(page_info_str[-1])      # max page 9,total 30*9=270, no cell has so much house
 #==============================================================================
     info_dict_all = {}   # if each house info_dict insert into database ,this info_dict_all is not needed
 
@@ -268,15 +311,89 @@ def house_celllist_spider(conn,celllist = [u'荣丰2008',u'保利茉莉公馆'])
 
 
 
+def cell_perregion_spider(conn,regionname = u'xicheng'):
+
+    url=u"http://bj.lianjia.com/xiaoqu/" + regionname +"/"
+
+    #try:
+    req = Request(url,headers=hds[random.randint(0,len(hds)-1)])
+    source_code = urlopen(req,timeout=50).read()
+    soup = BeautifulSoup(source_code,'lxml')
+    #except (HTTPError, URLError), e:
+    #    print e
+    #    return
+    #except Exception,e:
+    #    print e
+    #    return
+    total_pages = 0
+#====================== method 1:step is good ,file run is wrong========================================================
+#     page_info = "page_info =" + soup.find('div',{'class':'page-box house-lst-page-box'}).get('page-data')  #'{"totalPage":5,"curPage":1}'
+#     exec(page_info)
+#     total_pages = page_info['totalPage']
+#==============================================================================
+#======================method 2:string split  ========================================================
+    try:
+        page_info= soup.find('div',{'class':'page-box house-lst-page-box'})
+    except AttributeError as e:
+        page_info = None
+
+    if page_info == None:
+        return None
+
+    page_info_str = page_info.get('page-data').split(',')[0].split(':')[1]  #'{"totalPage":5,"curPage":1}'
+    total_pages= int(page_info_str)
+#==============================================================================
+    info_dict_all = {}   # if each house info_dict insert into database ,this info_dict_all is not needed
+
+    for page in range(total_pages):
+        if page>0:
+            url_page=u"http://bj.lianjia.com/xiaoqu/" + regionname +"/pg%d/" % (page+1,)
+            req = Request(url_page,headers=hds[random.randint(0,len(hds)-1)])
+            source_code = urlopen(req,timeout=50).read()
+            soup = BeautifulSoup(source_code,'lxml')
+
+
+        nameList = soup.findAll("li", {"class":"clear"})
+        i = 0
+
+        for name in nameList:   # per house loop
+            i = i + 1
+            info_dict = {}
+            info_dict_all.setdefault(i+page*30,{})
+
+            celltitle = name.find("div",{"class":"title"})  #html
+            info_dict.update({u'Title':celltitle.get_text()})
+            info_dict.update({u'link':celltitle.a.get('href')})   #atrribute get
+
+            # cellinfo insert into mysql
+            cellinfo_insert_mysql(conn,info_dict)
+
+            info_dict_all[i+page*30] = info_dict
+
+#    return info_dict_all    #only for unit test
+
+
+def cell_regionlist_spider(conn,regionlist = [u'xicheng']):
+    for regionname in regionlist:
+        cell_perregion_spider(conn,regionname)
+#        celldict = cell_perregion_spider(conn,regionname)
+#    return celldict       # only unit test
+
+
+
 if __name__=="__main__":
-    celllist = [u'西豪逸景',u'丽水莲花',u'天宁寺东里',u'天宁寺西里',u'天宁寺前街北里',u'天宁寺前街南里',u'永居东里',u'永居胡同',\
-                u'手帕口北街',u'广华轩',u'三义里',u'三义东里',u'三义西里',u'常青藤嘉园',u'格调',u'依莲轩',u'西环景苑',u'丽阳四季',\
-                u'馨莲茗苑',u'马连道西里',u'小马厂东里',u'小马厂南里',u'小马厂西里',u'莲花池东路24号院',u'北欧印象',u'考拉社区',u'保利茉莉公馆',u'保利春天派']
+    regionlist = [u'xicheng']    # only pinyin support
+#    celllist = [u'西豪逸景',u'丽水莲花',u'天宁寺东里',u'天宁寺西里',u'天宁寺前街北里',u'天宁寺前街南里',u'永居东里',u'永居胡同',\
+#     u'手帕口北街',u'广华轩',u'三义里',u'三义东里',u'三义西里',u'常青藤嘉园',u'格调',u'依莲轩',u'西环景苑',u'丽阳四季',\
+#     u'馨莲茗苑',u'马连道西里',u'小马厂东里',u'小马厂南里',u'小马厂西里',u'莲花池东路24号院',u'北欧印象',u'考拉社区',u'保利茉莉公馆',u'保利春天派']
 #==============================================================================
 #     ,u'西豪逸景',u'丽水莲花',u'天宁寺东里',u'天宁寺西里',u'天宁寺前街北里',u'天宁寺前街南里',u'永居东里',u'永居胡同',\
 #     u'手帕口北街',u'广华轩',u'三义里',u'三义东里',u'三义西里',u'常青藤嘉园',u'格调',u'依莲轩',u'西环景苑',u'丽阳四季',\
 #     u'馨莲茗苑',u'马连道西里',u'小马厂东里',u'小马厂南里',u'小马厂西里',u'莲花池东路24号院',u'北欧印象',u'考拉社区',u'保利茉莉公馆',
 #==============================================================================
-    conn = database_init()
-    house = house_celllist_spider(conn,celllist)
+    dbflag = 'local'            # local,  remote
+    conn = database_init(dbflag)
+    cell_regionlist_spider(conn,regionlist)         # init,scrapy celllist and insert database; could run only 1st time
+    celllist = celllist_read_from_database(conn)
+    house = house_celllist_spider(conn,celllist)       #  read celllist from database
     conn.close()
