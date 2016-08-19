@@ -47,7 +47,7 @@ def database_init(dbflag='local'):
                 totalPrice varchar(200), unitPrice varchar(200),followInfo varchar(200),validdate varchar(50),validflag varchar(20))')
 
      dbc.execute('create table if not exists hisprice (id int(10) NOT NULL AUTO_INCREMENT primary key,houseID varchar(50) , date varchar(50), totalPrice varchar(200))')
-     dbc.execute('create table if not exists cellinfo (id int(10) NOT NULL AUTO_INCREMENT primary key,Title varchar(50) , link varchar(200))')
+     dbc.execute('create table if not exists cellinfo (id int(10) NOT NULL AUTO_INCREMENT primary key,Title varchar(50) , link varchar(200),district varchar(50),bizcircle varchar(50),tagList varchar(200))')
 
      conn.commit()
      dbc.close()
@@ -69,7 +69,7 @@ def celllist_read_from_database(conn):
 
 def cellinfo_insert_mysql(conn,info_dict):
 
-    t=(info_dict[u'Title'],info_dict[u'link'])  # for cellinfo
+    t=(info_dict[u'Title'],info_dict[u'link'],info_dict[u'district'],info_dict[u'bizcircle'],info_dict[u'tagList'])  # for cellinfo
 
     cursor = conn.cursor()
 
@@ -77,9 +77,10 @@ def cellinfo_insert_mysql(conn,info_dict):
     values = cursor.fetchall()         #turple type
 
     if len(values)==0:        # new cell
-        cursor.execute('insert into cellinfo (Title,link) values (%s,%s)', t)
+        cursor.execute('insert into cellinfo (Title,link,district,bizcircle,tagList) values (%s,%s,%s,%s,%s)', t)
     else:
-        cursor.execute('update cellinfo set link = %s where Title = %s',(info_dict[u'link'],info_dict[u'Title']))
+        cursor.execute('update cellinfo set link = %s,district = %s, bizcircle = %s,tagList = %s where Title = %s',\
+                       (info_dict[u'link'],info_dict[u'district'],info_dict[u'bizcircle'],info_dict[u'tagList'],info_dict[u'Title']))
 
     conn.commit()
     cursor.close()
@@ -125,12 +126,21 @@ def houseinfo_insert_mysql(conn,info_dict):
         else:
 #            cursor.execute('update houseinfo set validflag= %s where houseid = %s',('1',info_dict[u'houseID']))
             cursor.execute('update hisprice set totalPrice= %s where houseid = %s',(info_dict[u'totalPrice'],info_dict[u'houseID']))
-        if int(Qres[u'totalPrice']) != int(info_dict[u'totalPrice']):
+        if float(Qres[u'totalPrice']) != float(info_dict[u'totalPrice']):    # str2float,when str2int is error
             info_dict[u'oldprice'] = Qres[u'totalPrice']
 #            trigger_notify_email(info_dict,'updateprice')
 
     conn.commit()
     cursor.close()
+    # only to solve mysql conn not available problem
+#    sql = "SELECT * FROM houseinfo"
+#    cursor.execute( sql )
+##    dbRec = cursor.fetchone()
+#    while cursor.fetchone():       # comment this out to fix the "bug"
+#        pass
+#
+
+
 
 
 def trigger_notify_email(info_dict,reason='newhouse'):
@@ -365,6 +375,14 @@ def cell_perregion_spider(conn,regionname = u'xicheng'):
             info_dict.update({u'Title':celltitle.get_text()})
             info_dict.update({u'link':celltitle.a.get('href')})   #atrribute get
 
+            district = name.find("a",{"class":"district"})  #html
+            info_dict.update({u'district':district.get_text()})
+            bizcircle = name.find("a",{"class":"bizcircle"})
+            info_dict.update({u'bizcircle':bizcircle.get_text()})    
+
+            tagList = name.find("div",{"class":"tagList"})
+            info_dict.update({u'tagList':tagList.get_text()})
+
             # cellinfo insert into mysql
             cellinfo_insert_mysql(conn,info_dict)
 
@@ -383,17 +401,19 @@ def cell_regionlist_spider(conn,regionlist = [u'xicheng']):
 
 if __name__=="__main__":
     regionlist = [u'xicheng']    # only pinyin support
-#    celllist = [u'西豪逸景',u'丽水莲花',u'天宁寺东里',u'天宁寺西里',u'天宁寺前街北里',u'天宁寺前街南里',u'永居东里',u'永居胡同',\
-#     u'手帕口北街',u'广华轩',u'三义里',u'三义东里',u'三义西里',u'常青藤嘉园',u'格调',u'依莲轩',u'西环景苑',u'丽阳四季',\
-#     u'馨莲茗苑',u'马连道西里',u'小马厂东里',u'小马厂南里',u'小马厂西里',u'莲花池东路24号院',u'北欧印象',u'考拉社区',u'保利茉莉公馆',u'保利春天派']
+    celllist = [u'西豪逸景',u'丽水莲花',u'天宁寺东里',u'天宁寺西里',u'天宁寺前街北里',u'天宁寺前街南里',u'永居东里',u'永居胡同',\
+     u'手帕口北街',u'广华轩',u'三义里',u'三义东里',u'三义西里',u'常青藤嘉园',u'格调',u'依莲轩',u'西环景苑',u'丽阳四季',u'荣丰2008',\
+     u'馨莲茗苑',u'马连道西里',u'小马厂东里',u'小马厂南里',u'小马厂西里',u'莲花池东路24号院',u'北欧印象',u'考拉社区',u'保利茉莉公馆',u'保利春天派']
 #==============================================================================
 #     ,u'西豪逸景',u'丽水莲花',u'天宁寺东里',u'天宁寺西里',u'天宁寺前街北里',u'天宁寺前街南里',u'永居东里',u'永居胡同',\
-#     u'手帕口北街',u'广华轩',u'三义里',u'三义东里',u'三义西里',u'常青藤嘉园',u'格调',u'依莲轩',u'西环景苑',u'丽阳四季',\
+#     u'手帕口北街',u'广华轩',u'三义里',u'三义东里',u'三义西里',u'常青藤嘉园',u'格调',u'依莲轩',u'西环景苑',u'丽阳四季',u'荣丰2008',\
 #     u'馨莲茗苑',u'马连道西里',u'小马厂东里',u'小马厂南里',u'小马厂西里',u'莲花池东路24号院',u'北欧印象',u'考拉社区',u'保利茉莉公馆',
 #==============================================================================
     dbflag = 'local'            # local,  remote
     conn = database_init(dbflag)
-    cell_regionlist_spider(conn,regionlist)         # init,scrapy celllist and insert database; could run only 1st time
+#    cell_regionlist_spider(conn,regionlist)         # init,scrapy celllist and insert database; could run only 1st time
     celllist = celllist_read_from_database(conn)
+    celllist.append(u'保利茉莉公馆')
+    celllist.append(u'保利春天派')
     house = house_celllist_spider(conn,celllist)       #  read celllist from database
     conn.close()
