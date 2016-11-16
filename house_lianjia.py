@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """
 @author: ziyubiti
 @site: http://ziyubiti.github.io
@@ -6,7 +6,7 @@
 """
 
 from urllib.request import urlopen,Request
-#from urllib.error import HTTPError, URLError
+from urllib.error import HTTPError, URLError
 from urllib.parse import quote
 from bs4 import BeautifulSoup
 import random
@@ -38,7 +38,7 @@ def database_init(dbflag='local'):
      if dbflag=='local':
          conn = mysql.connector.connect(user='root', password='password', database='lianjiaSpider',host='localhost')
      else:
-         conn = mysql.connector.connect(user='qdm1944', password='password', database='qdm1944_db',host='qdm1944.my3w.com')
+         conn = mysql.connector.connect(user='qdm', password='password', database='qdm',host='qdm.my3w.com')
      dbc = conn.cursor()
 
      # 创建houseinfo and hisprice表:
@@ -222,16 +222,16 @@ def house_percell_spider(conn,cellname = u'荣丰2008'):
 
     url=u"http://bj.lianjia.com/ershoufang/rs" + quote(cellname) +"/"
 
-    #try:
-    req = Request(url,headers=hds[random.randint(0,len(hds)-1)])
-    source_code = urlopen(req,timeout=50).read()
-    soup = BeautifulSoup(source_code,'lxml')
-    #except (HTTPError, URLError), e:
-    #    print e
-    #    return
-    #except Exception,e:
-    #    print e
-    #    return
+    try:
+        req = Request(url,headers=hds[random.randint(0,len(hds)-1)])
+        source_code = urlopen(req,timeout=50).read()
+        soup = BeautifulSoup(source_code,'lxml')
+    except HTTPError as e:
+        print (e)
+        return
+    except Exception as e:
+        print (e)
+        return
     total_pages = 0
 #====================== method 1:step is good ,file run is wrong========================================================
 #     page_info = "page_info =" + soup.find('div',{'class':'page-box house-lst-page-box'}).get('page-data')  #'{"totalPage":5,"curPage":1}'
@@ -259,7 +259,7 @@ def house_percell_spider(conn,cellname = u'荣丰2008'):
             source_code = urlopen(req,timeout=50).read()
             soup = BeautifulSoup(source_code,'lxml')
 
-
+        
         nameList = soup.findAll("li", {"class":"clear"})
         i = 0
 
@@ -269,7 +269,7 @@ def house_percell_spider(conn,cellname = u'荣丰2008'):
             info_dict_all.setdefault(i+page*30,{})
 
             housetitle = name.find("div",{"class":"title"})  #html
-            info_dict.update({u'Title':housetitle.get_text()})
+            info_dict.update({u'Title':housetitle.get_text().strip()})
             info_dict.update({u'link':housetitle.a.get('href')})   #atrribute get
 
             houseaddr = name.find("div",{"class":"address"})
@@ -288,7 +288,7 @@ def house_percell_spider(conn,cellname = u'荣丰2008'):
             info_dict.update({u'followInfo':followInfo.get_text()})
 
             tax = name.find("div",{"class":"tag"})
-            info_dict.update({u'taxtype':tax.get_text()})   # none span
+            info_dict.update({u'taxtype':tax.get_text().strip()})   # none span
             #info_dict.update({u'taxtype':tax.span.get_text()})
 
             totalPrice = name.find("div",{"class":"totalPrice"})
@@ -378,7 +378,7 @@ def cell_perregion_spider(conn,regionname = u'xicheng'):
             district = name.find("a",{"class":"district"})  #html
             info_dict.update({u'district':district.get_text()})
             bizcircle = name.find("a",{"class":"bizcircle"})
-            info_dict.update({u'bizcircle':bizcircle.get_text()})    
+            info_dict.update({u'bizcircle':bizcircle.get_text()})
 
             tagList = name.find("div",{"class":"tagList"})
             info_dict.update({u'tagList':tagList.get_text()})
@@ -396,24 +396,3 @@ def cell_regionlist_spider(conn,regionlist = [u'xicheng']):
         cell_perregion_spider(conn,regionname)
 #        celldict = cell_perregion_spider(conn,regionname)
 #    return celldict       # only unit test
-
-
-
-if __name__=="__main__":
-    regionlist = [u'xicheng']    # only pinyin support
-    celllist = [u'西豪逸景',u'丽水莲花',u'天宁寺东里',u'天宁寺西里',u'天宁寺前街北里',u'天宁寺前街南里',u'永居东里',u'永居胡同',\
-     u'手帕口北街',u'广华轩',u'三义里',u'三义东里',u'三义西里',u'常青藤嘉园',u'格调',u'依莲轩',u'西环景苑',u'丽阳四季',u'荣丰2008',\
-     u'馨莲茗苑',u'马连道西里',u'小马厂东里',u'小马厂南里',u'小马厂西里',u'莲花池东路24号院',u'北欧印象',u'考拉社区',u'保利茉莉公馆',u'保利春天派']
-#==============================================================================
-#     ,u'西豪逸景',u'丽水莲花',u'天宁寺东里',u'天宁寺西里',u'天宁寺前街北里',u'天宁寺前街南里',u'永居东里',u'永居胡同',\
-#     u'手帕口北街',u'广华轩',u'三义里',u'三义东里',u'三义西里',u'常青藤嘉园',u'格调',u'依莲轩',u'西环景苑',u'丽阳四季',u'荣丰2008',\
-#     u'馨莲茗苑',u'马连道西里',u'小马厂东里',u'小马厂南里',u'小马厂西里',u'莲花池东路24号院',u'北欧印象',u'考拉社区',u'保利茉莉公馆',
-#==============================================================================
-    dbflag = 'local'            # local,  remote
-    conn = database_init(dbflag)
-#    cell_regionlist_spider(conn,regionlist)         # init,scrapy celllist and insert database; could run only 1st time
-    celllist = celllist_read_from_database(conn)
-    celllist.append(u'保利茉莉公馆')
-    celllist.append(u'保利春天派')
-    house = house_celllist_spider(conn,celllist)       #  read celllist from database
-    conn.close()
